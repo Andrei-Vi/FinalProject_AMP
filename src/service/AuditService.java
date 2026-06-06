@@ -1,6 +1,7 @@
 package service;
 
 import exception.CsvWriteException;
+import exception.CsvReadException;
 import model.User;
 import repository.AuditCsvRepository;
 
@@ -41,6 +42,16 @@ public class AuditService {
     }
 
     public List<String> getAuditLogs() {
+        if (auditCsvRepository != null) {
+            try {
+                return auditCsvRepository.findAll();
+            } catch (CsvReadException exception) {
+                List<String> logs = new ArrayList<>(auditLogs);
+                logs.add("Eroare la citirea audit.csv: " + exception.getMessage());
+                return logs;
+            }
+        }
+
         return new ArrayList<>(auditLogs);
     }
 }

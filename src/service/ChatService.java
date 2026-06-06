@@ -4,6 +4,7 @@ import exception.*;
 import model.ChatRoom;
 import model.FileMessage;
 import model.FileTransfer;
+import model.Message;
 import model.Session;
 import model.TextMessage;
 import model.User;
@@ -11,6 +12,9 @@ import model.enums.ConnectionStatus;
 import model.enums.FileTransferStatus;
 import model.enums.UserStatus;
 import network.LocalhostMessageTransport;
+import repository.FileTransferCsvRepository;
+import repository.MessageCsvRepository;
+import repository.UserCsvRepository;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,24 +31,31 @@ public class ChatService {
     private final List<FileTransfer> fileTransfers;
     private final AuditService auditService;
     private final LocalhostMessageTransport messageTransport;
+    private final UserCsvRepository userCsvRepository;
+    private final MessageCsvRepository messageCsvRepository;
+    private final FileTransferCsvRepository fileTransferCsvRepository;
     private int nextMessageId;
     private int nextFileTransferId;
 
-    public ChatService() {
-        this(new AuditService());
+    public ChatService(AuditService auditService, UserCsvRepository userCsvRepository,
+                       MessageCsvRepository messageCsvRepository,
+                       FileTransferCsvRepository fileTransferCsvRepository) {
+        this(auditService, new LocalhostMessageTransport(), userCsvRepository, messageCsvRepository,
+                fileTransferCsvRepository);
     }
 
-    public ChatService(AuditService auditService) {
-        this(auditService, new LocalhostMessageTransport());
-    }
-
-    public ChatService(AuditService auditService, LocalhostMessageTransport messageTransport) {
+    public ChatService(AuditService auditService, LocalhostMessageTransport messageTransport,
+                       UserCsvRepository userCsvRepository, MessageCsvRepository messageCsvRepository,
+                       FileTransferCsvRepository fileTransferCsvRepository) {
         this.users = new ArrayList<>();
         this.chatRooms = new ArrayList<>();
         this.sessions = new ArrayList<>();
         this.fileTransfers = new ArrayList<>();
         this.auditService = auditService == null ? new AuditService() : auditService;
         this.messageTransport = messageTransport == null ? new LocalhostMessageTransport() : messageTransport;
+        this.userCsvRepository = userCsvRepository;
+        this.messageCsvRepository = messageCsvRepository;
+        this.fileTransferCsvRepository = fileTransferCsvRepository;
         this.nextMessageId = 1;
         this.nextFileTransferId = 1;
     }
@@ -55,6 +66,24 @@ public class ChatService {
 
     public void addChatRoom(ChatRoom chatRoom) {
         chatRooms.add(chatRoom);
+    }
+
+    public void addMessage(Message message) {
+        if (message == null || message.getChatRoom() == null) {
+            return;
+        }
+
+        message.getChatRoom().addMessage(message);
+        nextMessageId = Math.max(nextMessageId, message.getId() + 1);
+    }
+
+    public void addFileTransfer(FileTransfer fileTransfer) {
+        if (fileTransfer == null) {
+            return;
+        }
+
+        fileTransfers.add(fileTransfer);
+        nextFileTransferId = Math.max(nextFileTransferId, fileTransfer.getId() + 1);
     }
 
     public List<ChatRoom> getChatRooms() {
@@ -87,10 +116,6 @@ public class ChatService {
         }
 
         return roomTransfers;
-    }
-
-    public AuditService getAuditService() {
-        return auditService;
     }
 
     private User findUserByUsername(String username) {
@@ -150,6 +175,7 @@ public class ChatService {
         Session session = new Session(user, null, ConnectionStatus.CONNECTED, LocalDateTime.now());
         sessions.add(session);
 
+        persistUsers();
         auditService.logAction("LOGIN", user);
 
         return session;
@@ -180,6 +206,7 @@ public class ChatService {
         session.joinRoom(chatRoom);
         user.setStatus(UserStatus.IN_ROOM);
 
+        persistUsers();
         auditService.logAction("JOIN_ROOM", user, "roomId=" + chatRoom.getId() + ", roomName=" + chatRoom.getName());
     }
 
@@ -199,6 +226,7 @@ public class ChatService {
         session.leaveRoom();
         user.setStatus(UserStatus.ONLINE);
 
+        persistUsers();
         auditService.logAction("LEAVE_ROOM", user, "roomId=" + chatRoom.getId() + ", roomName=" + chatRoom.getName());
     }
 
@@ -216,6 +244,7 @@ public class ChatService {
         sessions.remove(session);
         user.setStatus(UserStatus.OFFLINE);
 
+        persistUsers();
         auditService.logAction("LOGOUT", user);
     }
 
@@ -255,6 +284,7 @@ public class ChatService {
         );
 
         session.getCurrentChatRoom().addMessage(message);
+        persistMessages();
         auditService.logAction("SEND_MESSAGE", user, "roomId=" + session.getCurrentChatRoom().getId() + ", messageId=" + message.getId());
 
         return message;
@@ -316,6 +346,8 @@ public class ChatService {
 
         fileTransfers.add(fileTransfer);
         chatRoom.addMessage(fileMessage);
+        persistFileTransfers();
+        persistMessages();
         auditService.logAction("SEND_FILE", user, "roomId=" + chatRoom.getId() + ", transferId=" + fileTransfer.getId() + ", fileName=" + fileName);
 
         return fileTransfer;
@@ -356,7 +388,9 @@ public class ChatService {
         }
 
         fileTransfer.markDownloaded();
-        updateFileMessageStatus(session.getCurrentChatRoom(), fileTransferId, FileTransferStatus.DOWNLOADED);
+        updateFileMessageStatus(session.getCurrentChatRoom(), fileTransferId);
+        persistFileTransfers();
+        persistMessages();
         auditService.logAction("DOWNLOAD_FILE", user, "transferId=" + fileTransferId + ", destination=" + destinationPath);
 
         return destinationPath;
@@ -372,10 +406,10 @@ public class ChatService {
         return null;
     }
 
-    private void updateFileMessageStatus(ChatRoom chatRoom, int fileTransferId, FileTransferStatus status) {
+    private void updateFileMessageStatus(ChatRoom chatRoom, int fileTransferId) {
         for (var message : chatRoom.getMessages()) {
             if (message instanceof FileMessage fileMessage && fileMessage.getFileTransferId() == fileTransferId) {
-                fileMessage.setStatus(status);
+                fileMessage.setStatus(FileTransferStatus.DOWNLOADED);
             }
         }
     }
@@ -415,6 +449,25 @@ public class ChatService {
         }
 
         target.setStatus(UserStatus.BANNED);
+        persistUsers();
         auditService.logAction("BAN_USER", admin, "target=" + target.getUsername());
+    }
+
+    private void persistUsers() throws CsvWriteException {
+        if (userCsvRepository != null) {
+            userCsvRepository.saveAll(users);
+        }
+    }
+
+    private void persistMessages() throws CsvWriteException {
+        if (messageCsvRepository != null) {
+            messageCsvRepository.saveAll(chatRooms);
+        }
+    }
+
+    private void persistFileTransfers() throws CsvWriteException {
+        if (fileTransferCsvRepository != null) {
+            fileTransferCsvRepository.saveAll(fileTransfers);
+        }
     }
 }

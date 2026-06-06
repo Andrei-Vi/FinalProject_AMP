@@ -11,6 +11,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public class AuditCsvRepository {
+    private static final String HEADER = "timestamp,action,username,details";
+
     private final Path auditCsvPath;
 
     public AuditCsvRepository(String auditCsvPath) {
@@ -21,6 +23,20 @@ public class AuditCsvRepository {
         String line = toCsvLine(LocalDateTime.now().toString(), action, username, details);
 
         try {
+            Path parent = auditCsvPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+
+            if (!Files.exists(auditCsvPath) || Files.size(auditCsvPath) == 0) {
+                Files.writeString(
+                        auditCsvPath,
+                        HEADER + System.lineSeparator(),
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.APPEND
+                );
+            }
+
             Files.writeString(
                     auditCsvPath,
                     line + System.lineSeparator(),
@@ -34,6 +50,10 @@ public class AuditCsvRepository {
 
     public List<String> findAll() throws CsvReadException {
         try {
+            if (!Files.exists(auditCsvPath)) {
+                return List.of();
+            }
+
             return Files.readAllLines(auditCsvPath);
         } catch (IOException exception) {
             throw new CsvReadException("Nu s-a putut citi audit.csv: " + exception.getMessage());

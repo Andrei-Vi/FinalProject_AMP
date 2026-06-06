@@ -1,1 +1,4 @@
-id,senderId,chatRoomId,timestamp,type,content,fileName,filePath
+id,senderId,chatRoomId,timestamp,type,content,fileTransferId,fileName,filePath,status
+1,1,1,2026-06-06T15:34:52.567628400,TEXT,nuna,,,,
+2,1,1,2026-06-06T15:35:29.519148500,TEXT,ggg,,,,
+3,2,1,2026-06-06T16:22:15.078463700,TEXT,buna,,,,

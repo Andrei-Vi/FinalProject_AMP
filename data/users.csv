@@ -1,1 +1,4 @@
 id,username,password,role,status
+1,admin,admin123,ADMIN,IN_ROOM
+2,ana,ana123,REGULAR,IN_ROOM
+3,mihai,mihai123,REGULAR,OFFLINE

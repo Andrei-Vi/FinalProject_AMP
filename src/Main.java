@@ -1,15 +1,14 @@
+import app.ChatApplicationContext;
+import app.ChatApplicationFactory;
+import exception.CsvReadException;
+import exception.CsvWriteException;
 import exception.PermissionDeniedException;
-import model.AdminUser;
 import model.ChatRoom;
 import model.FileTransfer;
 import model.Message;
-import model.RegularUser;
 import model.Session;
 import model.TextMessage;
 import model.User;
-import model.enums.UserRole;
-import model.enums.UserStatus;
-import repository.AuditCsvRepository;
 import service.AuditService;
 import service.ChatService;
 
@@ -21,22 +20,14 @@ public class Main {
     private static final Scanner scanner = new Scanner(System.in);
 
     public static void main(String[] args) {
-        String auditPath = args.length > 0 ? args[0] : "data/audit.csv";
-        AuditCsvRepository auditCsvRepository = new AuditCsvRepository(auditPath);
-        AuditService auditService = new AuditService(auditCsvRepository);
-        ChatService chatService = new ChatService(auditService);
+        Path dataDirectory = args.length > 0 ? Path.of(args[0]) : Path.of("data");
 
-        seedData(chatService);
-        runApplication(chatService, auditService);
-    }
-
-    private static void seedData(ChatService chatService) {
-        chatService.addUser(new AdminUser(1, "admin", "admin123", UserRole.ADMIN, UserStatus.OFFLINE));
-        chatService.addUser(new RegularUser(2, "ana", "ana123", UserRole.REGULAR, UserStatus.OFFLINE));
-        chatService.addUser(new RegularUser(3, "mihai", "mihai123", UserRole.REGULAR, UserStatus.OFFLINE));
-
-        chatService.addChatRoom(new ChatRoom(1, "General"));
-        chatService.addChatRoom(new ChatRoom(2, "Facultate"));
+        try {
+            ChatApplicationContext context = new ChatApplicationFactory().create(dataDirectory);
+            runApplication(context.getChatService(), context.getAuditService());
+        } catch (CsvReadException | CsvWriteException exception) {
+            System.out.println("Aplicatia nu a putut incarca datele CSV: " + exception.getMessage());
+        }
     }
 
     private static void runApplication(ChatService chatService, AuditService auditService) {
@@ -54,7 +45,7 @@ public class Main {
                     }
                     break;
                 case "2":
-                    printDemoAccounts();
+                    printDemoAccounts(chatService);
                     break;
                 case "0":
                     running = false;
@@ -75,12 +66,12 @@ public class Main {
         System.out.println("0. Exit");
     }
 
-    private static void printDemoAccounts() {
+    private static void printDemoAccounts(ChatService chatService) {
         System.out.println();
-        System.out.println("Conturi demo:");
-        System.out.println("admin / admin123");
-        System.out.println("ana / ana123");
-        System.out.println("mihai / mihai123");
+        System.out.println("Conturi disponibile:");
+        for (User user : chatService.getUsers()) {
+            System.out.println(user.getUsername() + " / " + user.getPassword() + " (" + user.getRole() + ")");
+        }
     }
 
     private static Session login(ChatService chatService) {
@@ -197,7 +188,7 @@ public class Main {
 
         try {
             TextMessage message = chatService.sendMessage(user, content);
-            System.out.println("Mesaj trimis:");
+            System.out.println("Mesaj trimis si primit prin localhost:");
             System.out.println(message.formatForDisplay());
         } catch (Exception exception) {
             System.out.println("Mesajul nu a fost trimis: " + exception.getMessage());
@@ -223,6 +214,7 @@ public class Main {
         try {
             FileTransfer fileTransfer = chatService.sendFile(user, fileName, filePath);
             System.out.println("Fisier trimis. Transfer id: " + fileTransfer.getId() + ", status: " + fileTransfer.getStatus());
+            System.out.println("Il poti descarca din meniul 9.");
         } catch (Exception exception) {
             System.out.println("Fisierul nu a fost trimis: " + exception.getMessage());
         }
@@ -295,13 +287,28 @@ public class Main {
     }
 
     private static void downloadFile(ChatService chatService, User user) {
-        listFileTransfers(chatService, user);
-        int fileTransferId = readInt("Id transfer de descarcat: ");
-        String destinationDirectory = readLine("Folder destinatie: ");
-
         try {
+            List<FileTransfer> fileTransfers = chatService.getFileTransfersForCurrentRoom(user);
+
+            if (fileTransfers.isEmpty()) {
+                System.out.println("Camera curenta nu are fisiere trimise.");
+                return;
+            }
+
+            System.out.println();
+            System.out.println("Fisiere in camera curenta:");
+            for (FileTransfer fileTransfer : fileTransfers) {
+                System.out.println("id=" + fileTransfer.getId()
+                        + " | " + fileTransfer.getFileName()
+                        + " | status=" + fileTransfer.getStatus()
+                        + " | source=" + fileTransfer.getFilePath());
+            }
+
+            int fileTransferId = readInt("Id transfer de descarcat: ");
+            String destinationDirectory = readLine("Folder destinatie: ");
             Path downloadedPath = chatService.downloadFile(user, fileTransferId, destinationDirectory);
             System.out.println("Fisier descarcat la: " + downloadedPath);
+            System.out.println("Mesajul fisierului are acum tag-ul DOWNLOADED.");
         } catch (Exception exception) {
             System.out.println("Download esuat: " + exception.getMessage());
         }
