@@ -1,4 +1,5 @@
 id,username,password,role,status
 1,admin,admin123,ADMIN,IN_ROOM
-2,ana,ana123,REGULAR,IN_ROOM
+2,ana,ana123,REGULAR,BANNED
 3,mihai,mihai123,REGULAR,OFFLINE
+4,andrei,1,REGULAR,IN_ROOM

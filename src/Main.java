@@ -39,12 +39,15 @@ public class Main {
 
             switch (option) {
                 case "1":
+                    createAccount(chatService);
+                    break;
+                case "2":
                     Session session = login(chatService);
                     if (session != null) {
                         running = runUserMenu(chatService, auditService, session);
                     }
                     break;
-                case "2":
+                case "3":
                     printDemoAccounts(chatService);
                     break;
                 case "0":
@@ -61,8 +64,9 @@ public class Main {
     private static void printStartMenu() {
         System.out.println();
         System.out.println("=== Chat App ===");
-        System.out.println("1. Login");
-        System.out.println("2. Afiseaza conturi demo");
+        System.out.println("1. Creeaza cont");
+        System.out.println("2. Login");
+        System.out.println("3. Afiseaza conturi demo");
         System.out.println("0. Exit");
     }
 
@@ -71,6 +75,18 @@ public class Main {
         System.out.println("Conturi disponibile:");
         for (User user : chatService.getUsers()) {
             System.out.println(user.getUsername() + " / " + user.getPassword() + " (" + user.getRole() + ")");
+        }
+    }
+
+    private static void createAccount(ChatService chatService) {
+        String username = readLine("Username nou: ");
+        String password = readLine("Parola noua: ");
+
+        try {
+            User user = chatService.createRegularAccount(username, password);
+            System.out.println("Cont creat pentru " + user.getUsername() + ". Te poti loga acum.");
+        } catch (Exception exception) {
+            System.out.println("Contul nu a putut fi creat: " + exception.getMessage());
         }
     }
 
@@ -115,7 +131,11 @@ public class Main {
                     leaveRoom(chatService, session.getUser());
                     break;
                 case "7":
-                    banUser(chatService, session.getUser());
+                    if (session.getUser().isAdmin()) {
+                        banUser(chatService, session.getUser());
+                    } else {
+                        System.out.println("Doar adminii pot bana useri.");
+                    }
                     break;
                 case "8":
                     listFileTransfers(chatService, session.getUser());
@@ -124,7 +144,11 @@ public class Main {
                     downloadFile(chatService, session.getUser());
                     break;
                 case "10":
-                    showAuditLogs(auditService);
+                    if (session.getUser().isAdmin()) {
+                        showAuditLogs(auditService);
+                    } else {
+                        System.out.println("Doar adminii pot vedea audit logs.");
+                    }
                     break;
                 case "11":
                     logout(chatService, session.getUser());
@@ -153,11 +177,11 @@ public class Main {
         System.out.println("4. Trimite fisier");
         System.out.println("5. Afiseaza mesajele camerei curente");
         System.out.println("6. Iesi din camera curenta");
-        System.out.println("7. Baneaza user (admin)");
+        System.out.println("7. Baneaza user (admin" + (session.getUser().isAdmin() ? "" : " - indisponibil") + ")");
         System.out.println("8. Afiseaza fisierele camerei curente");
         System.out.println("9. Descarca fisier");
-        System.out.println("10. Afiseaza audit logs");
-        System.out.println("11. Logout");
+        System.out.println("10. Afiseaza audit logs (admin" + (session.getUser().isAdmin() ? "" : " - indisponibil") + ")");
+        System.out.println("11. Logout din cont");
         System.out.println("0. Exit aplicatie");
     }
 

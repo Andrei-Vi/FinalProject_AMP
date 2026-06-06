@@ -10,6 +10,7 @@ import model.TextMessage;
 import model.User;
 import model.enums.ConnectionStatus;
 import model.enums.FileTransferStatus;
+import model.enums.UserRole;
 import model.enums.UserStatus;
 import network.LocalhostMessageTransport;
 import repository.FileTransferCsvRepository;
@@ -34,6 +35,7 @@ public class ChatService {
     private final UserCsvRepository userCsvRepository;
     private final MessageCsvRepository messageCsvRepository;
     private final FileTransferCsvRepository fileTransferCsvRepository;
+    private int nextUserId;
     private int nextMessageId;
     private int nextFileTransferId;
 
@@ -56,12 +58,14 @@ public class ChatService {
         this.userCsvRepository = userCsvRepository;
         this.messageCsvRepository = messageCsvRepository;
         this.fileTransferCsvRepository = fileTransferCsvRepository;
+        this.nextUserId = 1;
         this.nextMessageId = 1;
         this.nextFileTransferId = 1;
     }
 
     public void addUser(User user) {
         users.add(user);
+        nextUserId = Math.max(nextUserId, user.getId() + 1);
     }
 
     public void addChatRoom(ChatRoom chatRoom) {
@@ -92,6 +96,28 @@ public class ChatService {
 
     public List<User> getUsers() {
         return new ArrayList<>(users);
+    }
+
+    public User createRegularAccount(String username, String password)
+            throws UserAlreadyExistsException, InvalidCredentialsException, CsvWriteException {
+        if (username == null || username.trim().isEmpty()) {
+            throw new InvalidCredentialsException("Username-ul nu poate fi gol.");
+        }
+
+        if (password == null || password.trim().isEmpty()) {
+            throw new InvalidCredentialsException("Parola nu poate fi goala.");
+        }
+
+        if (findUserByUsername(username.trim()) != null) {
+            throw new UserAlreadyExistsException("Exista deja un user cu username-ul: " + username.trim());
+        }
+
+        User user = new model.RegularUser(nextUserId++, username.trim(), password, UserRole.REGULAR, UserStatus.OFFLINE);
+        users.add(user);
+        persistUsers();
+        auditService.logAction("CREATE_ACCOUNT", user);
+
+        return user;
     }
 
     public List<FileTransfer> getFileTransfersForCurrentRoom(User user)
