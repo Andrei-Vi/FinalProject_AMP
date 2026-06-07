@@ -23,13 +23,30 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ChatService {
+    private static final int MIN_USERNAME_LENGTH = 3;
+    private static final int MAX_USERNAME_LENGTH = 32;
+    private static final int MIN_PASSWORD_LENGTH = 8;
+    private static final int MAX_PASSWORD_LENGTH = 128;
+    private static final int MAX_FAILED_LOGIN_ATTEMPTS = 5;
+    private static final int LOGIN_BLOCK_DURATION_SECONDS = 60;
+    private static final String INVALID_USERNAME_MESSAGE =
+            "Username invalid. Foloseste 3-32 caractere: litere, cifre sau underscore.";
+    private static final String INVALID_PASSWORD_MESSAGE =
+            "Parola trebuie sa aiba intre 8 si 128 de caractere si sa nu contina caractere de control.";
+    private static final String INVALID_LOGIN_MESSAGE = "Credentiale invalide.";
+    private static final String TEMPORARY_LOGIN_BLOCK_MESSAGE =
+            "Prea multe incercari esuate. Incearca din nou mai tarziu.";
+
     private final List<User> users;
     private final List<ChatRoom> chatRooms;
     private final List<Session> sessions;
     private final List<FileTransfer> fileTransfers;
+    private final Map<String, LoginAttempt> failedLoginAttempts;
     private final AuditService auditService;
     private final LocalhostMessageTransport messageTransport;
     private final UserCsvRepository userCsvRepository;
@@ -53,6 +70,7 @@ public class ChatService {
         this.chatRooms = new ArrayList<>();
         this.sessions = new ArrayList<>();
         this.fileTransfers = new ArrayList<>();
+        this.failedLoginAttempts = new HashMap<>();
         this.auditService = auditService == null ? new AuditService() : auditService;
         this.messageTransport = messageTransport == null ? new LocalhostMessageTransport() : messageTransport;
         this.userCsvRepository = userCsvRepository;
@@ -112,19 +130,14 @@ public class ChatService {
 
     public User createRegularAccount(String username, String password)
             throws UserAlreadyExistsException, InvalidCredentialsException, CsvWriteException {
-        if (username == null || username.trim().isEmpty()) {
-            throw new InvalidCredentialsException("Username-ul nu poate fi gol.");
+        String normalizedUsername = validateUsername(username);
+        validatePassword(password);
+
+        if (findUserByUsername(normalizedUsername) != null) {
+            throw new UserAlreadyExistsException("Exista deja un user cu username-ul: " + normalizedUsername);
         }
 
-        if (password == null || password.trim().isEmpty()) {
-            throw new InvalidCredentialsException("Parola nu poate fi goala.");
-        }
-
-        if (findUserByUsername(username.trim()) != null) {
-            throw new UserAlreadyExistsException("Exista deja un user cu username-ul: " + username.trim());
-        }
-
-        User user = new model.RegularUser(nextUserId++, username.trim(), password, UserRole.REGULAR, UserStatus.OFFLINE);
+        User user = new model.RegularUser(nextUserId++, normalizedUsername, password, UserRole.REGULAR, UserStatus.OFFLINE);
         users.add(user);
         persistUsers();
         auditService.logAction("CREATE_ACCOUNT", user);
@@ -188,18 +201,26 @@ public class ChatService {
 
     public Session login(String username, String password)
             throws UserNotFoundException, UserBannedException, InvalidCredentialsException, CsvWriteException {
-        User user = findUserByUsername(username);
+        String normalizedUsername = normalizeUsername(username);
 
-        if (user == null) {
-            throw new UserNotFoundException("Nu exista userul cu username-ul: " + username);
+        if (isTemporarilyBlocked(normalizedUsername)) {
+            throw new InvalidCredentialsException(TEMPORARY_LOGIN_BLOCK_MESSAGE);
         }
+
+        if (!isValidUsername(normalizedUsername) || password == null) {
+            failLogin(normalizedUsername);
+        }
+
+        User user = findUserByUsername(normalizedUsername);
+
+        if (user == null || !user.getPassword().equals(password)) {
+            failLogin(normalizedUsername);
+        }
+
+        resetFailedLogin(normalizedUsername);
 
         if (user.isBanned()) {
-            throw new UserBannedException("Userul " + username + " este banat.");
-        }
-
-        if (!user.getPassword().equals(password)) {
-            throw new InvalidCredentialsException("Parola este gresita pentru userul: " + username);
+            throw new UserBannedException("Userul " + normalizedUsername + " este banat.");
         }
 
         Session existingSession = findSessionByUser(user);
@@ -217,6 +238,108 @@ public class ChatService {
         auditService.logAction("LOGIN", user);
 
         return session;
+    }
+
+    private String normalizeUsername(String username) {
+        return username == null ? "" : username.trim();
+    }
+
+    private String validateUsername(String username) throws InvalidCredentialsException {
+        String normalizedUsername = normalizeUsername(username);
+
+        if (!isValidUsername(normalizedUsername)) {
+            throw new InvalidCredentialsException(INVALID_USERNAME_MESSAGE);
+        }
+
+        return normalizedUsername;
+    }
+
+    private boolean isValidUsername(String username) {
+        if (username.length() < MIN_USERNAME_LENGTH || username.length() > MAX_USERNAME_LENGTH) {
+            return false;
+        }
+
+        char firstCharacter = username.charAt(0);
+        if (firstCharacter == '=' || firstCharacter == '+' || firstCharacter == '-' || firstCharacter == '@') {
+            return false;
+        }
+
+        for (int index = 0; index < username.length(); index++) {
+            char character = username.charAt(index);
+
+            if (!Character.isLetterOrDigit(character) && character != '_') {
+                return false;
+            }
+
+            if (character > 127) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void validatePassword(String password) throws InvalidCredentialsException {
+        if (password == null
+                || password.length() < MIN_PASSWORD_LENGTH
+                || password.length() > MAX_PASSWORD_LENGTH
+                || password.trim().isEmpty()) {
+            throw new InvalidCredentialsException(INVALID_PASSWORD_MESSAGE);
+        }
+
+        for (int index = 0; index < password.length(); index++) {
+            if (Character.isISOControl(password.charAt(index))) {
+                throw new InvalidCredentialsException(INVALID_PASSWORD_MESSAGE);
+            }
+        }
+    }
+
+    private void failLogin(String normalizedUsername) throws InvalidCredentialsException {
+        recordFailedLogin(normalizedUsername);
+
+        if (isTemporarilyBlocked(normalizedUsername)) {
+            throw new InvalidCredentialsException(TEMPORARY_LOGIN_BLOCK_MESSAGE);
+        }
+
+        throw new InvalidCredentialsException(INVALID_LOGIN_MESSAGE);
+    }
+
+    private void recordFailedLogin(String username) {
+        String normalizedUsername = normalizeUsername(username);
+        LoginAttempt loginAttempt = failedLoginAttempts.get(normalizedUsername);
+        LocalDateTime now = LocalDateTime.now();
+
+        if (loginAttempt == null
+                || (loginAttempt.blockedUntil != null && !loginAttempt.blockedUntil.isAfter(now))) {
+            loginAttempt = new LoginAttempt();
+            failedLoginAttempts.put(normalizedUsername, loginAttempt);
+        }
+
+        loginAttempt.failedAttempts++;
+
+        if (loginAttempt.failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+            loginAttempt.blockedUntil = now.plusSeconds(LOGIN_BLOCK_DURATION_SECONDS);
+        }
+    }
+
+    private void resetFailedLogin(String username) {
+        failedLoginAttempts.remove(normalizeUsername(username));
+    }
+
+    private boolean isTemporarilyBlocked(String username) {
+        String normalizedUsername = normalizeUsername(username);
+        LoginAttempt loginAttempt = failedLoginAttempts.get(normalizedUsername);
+
+        if (loginAttempt == null || loginAttempt.blockedUntil == null) {
+            return false;
+        }
+
+        if (loginAttempt.blockedUntil.isAfter(LocalDateTime.now())) {
+            return true;
+        }
+
+        failedLoginAttempts.remove(normalizedUsername);
+        return false;
     }
 
     public void joinRoom(User user, int chatRoomId)
@@ -551,5 +674,10 @@ public class ChatService {
         if (fileTransferCsvRepository != null) {
             fileTransferCsvRepository.saveAll(fileTransfers);
         }
+    }
+
+    private static class LoginAttempt {
+        private int failedAttempts;
+        private LocalDateTime blockedUntil;
     }
 }
