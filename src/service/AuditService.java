@@ -54,4 +54,12 @@ public class AuditService {
 
         return new ArrayList<>(auditLogs);
     }
+
+    public void clearAuditLogs() throws CsvWriteException {
+        auditLogs.clear();
+
+        if (auditCsvRepository != null) {
+            auditCsvRepository.clear();
+        }
+    }
 }

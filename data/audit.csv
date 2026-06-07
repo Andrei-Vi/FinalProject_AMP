@@ -24,3 +24,16 @@ timestamp,action,username,details
 2026-06-06T17:22:22.312615900,SEND_FILE,andrei,"roomId=1, transferId=1, fileName=Screenshot 2026-06-03 204142.png"
 2026-06-06T17:23:50.018137600,DOWNLOAD_FILE,admin,"transferId=1, destination=C:\Users\visan\Pictures\Screenshots\Screenshot 2026-06-03 204142.png"
 2026-06-06T17:24:13.694028700,BAN_USER,admin,target=ana
+2026-06-07T12:44:24.080746100,LOGIN,andrei,
+2026-06-07T12:44:41.874342900,LOGIN,admin,
+2026-06-07T12:44:47.784432700,JOIN_ROOM,admin,"roomId=1, roomName=General"
+2026-06-07T12:44:51.408220900,JOIN_ROOM,andrei,"roomId=1, roomName=General"
+2026-06-07T12:45:08.019480400,LEAVE_ROOM,andrei,"roomId=1, roomName=General"
+2026-06-07T12:45:13.249665600,JOIN_ROOM,andrei,"roomId=1, roomName=General"
+2026-06-07T12:46:02.280993100,SEND_MESSAGE,andrei,"roomId=1, messageId=7"
+2026-06-07T12:46:08.226755500,JOIN_ROOM,admin,"roomId=1, roomName=General"
+2026-06-07T12:46:11.645713,JOIN_ROOM,admin,"roomId=1, roomName=General"
+2026-06-07T13:43:15.515072800,LOGIN,andrei,
+2026-06-07T13:43:23.511387200,JOIN_ROOM,andrei,"roomId=1, roomName=General"
+2026-06-07T13:43:33.266201800,JOIN_ROOM,andrei,"roomId=2, roomName=Facultate"
+2026-06-07T13:43:46.827302300,LOGIN,admin,

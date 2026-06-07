@@ -60,6 +60,24 @@ public class AuditCsvRepository {
         }
     }
 
+    public void clear() throws CsvWriteException {
+        try {
+            Path parent = auditCsvPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+
+            Files.writeString(
+                    auditCsvPath,
+                    "",
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+        } catch (IOException exception) {
+            throw new CsvWriteException("Nu s-a putut sterge audit.csv: " + exception.getMessage());
+        }
+    }
+
     private String toCsvLine(String timestamp, String action, String username, String details) {
         return escape(timestamp) + ","
                 + escape(action) + ","

@@ -5,3 +5,4 @@ id,senderId,chatRoomId,timestamp,type,content,fileTransferId,fileName,filePath,s
 4,1,1,2026-06-06T16:36:13.771606,TEXT,hi,,,,
 5,1,1,2026-06-06T17:20:36.622689800,TEXT,buna,,,,
 6,4,1,2026-06-06T17:22:21.982446300,FILE,,1,Screenshot 2026-06-03 204142.png,C:\Users\visan\Pictures\Screenshots\Screenshot 2026-06-03 204142.png,DOWNLOADED
+7,4,1,2026-06-07T12:46:01.953919,TEXT,"buna, admin",,,,

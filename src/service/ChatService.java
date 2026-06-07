@@ -98,6 +98,18 @@ public class ChatService {
         return new ArrayList<>(users);
     }
 
+    public List<User> getBannedUsers() {
+        List<User> bannedUsers = new ArrayList<>();
+
+        for (User user : users) {
+            if (user.isBanned()) {
+                bannedUsers.add(user);
+            }
+        }
+
+        return bannedUsers;
+    }
+
     public User createRegularAccount(String username, String password)
             throws UserAlreadyExistsException, InvalidCredentialsException, CsvWriteException {
         if (username == null || username.trim().isEmpty()) {
@@ -226,6 +238,11 @@ public class ChatService {
 
         if (chatRoom == null) {
             throw new ChatRoomNotFoundException("Nu exista camera cu id-ul: " + chatRoomId);
+        }
+
+        if (isUserInRoom(chatRoom, user)) {
+            throw new IllegalStateException("Userul " + user.getUsername()
+                    + " este deja in camera " + chatRoom.getName() + ".");
         }
 
         chatRoom.addMember(user);
@@ -477,6 +494,45 @@ public class ChatService {
         target.setStatus(UserStatus.BANNED);
         persistUsers();
         auditService.logAction("BAN_USER", admin, "target=" + target.getUsername());
+    }
+
+    public void unbanUser(User admin, String targetUsername)
+            throws PermissionDeniedException, UserNotFoundException, UserBannedException, CsvWriteException {
+        if (admin == null || !admin.isAdmin()) {
+            throw new PermissionDeniedException("Doar adminii pot debana useri.");
+        }
+
+        if (admin.isBanned()) {
+            throw new UserBannedException("Adminul " + admin.getUsername() + " este banat.");
+        }
+
+        User target = findUserByUsername(targetUsername);
+
+        if (target == null) {
+            throw new UserNotFoundException("Nu exista userul cu username-ul: " + targetUsername);
+        }
+
+        if (!target.isBanned()) {
+            throw new IllegalStateException("Userul " + targetUsername + " nu este banat.");
+        }
+
+        target.setStatus(UserStatus.OFFLINE);
+        persistUsers();
+        auditService.logAction("UNBAN_USER", admin, "target=" + target.getUsername());
+    }
+
+    private boolean isUserInRoom(ChatRoom chatRoom, User user) {
+        if (chatRoom == null || user == null) {
+            return false;
+        }
+
+        for (User member : chatRoom.getMembers()) {
+            if (member != null && member.getId() == user.getId()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void persistUsers() throws CsvWriteException {
