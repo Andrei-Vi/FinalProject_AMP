@@ -49,19 +49,19 @@ Nu trebuie schimbat IP-ul pentru fiecare client. Diferenta dintre clienti este f
 Compileaza proiectul:
 
 ```powershell
-javac -d out $(Get-ChildItem -Path src -Recurse -Filter *.java | ForEach-Object { $_.FullName })
+& "C:\Users\user\.jdks\openjdk-25.0.2\bin\javac.exe" -d out $(Get-ChildItem -Path src -Recurse -Filter *.java | ForEach-Object { $_.FullName })
 ```
 
 Porneste serverul:
 
 ```powershell
-java -cp out server.ChatServer 5000 data
+& "C:\Users\user\.jdks\openjdk-25.0.2\bin\java.exe" -cp out server.ChatServer 5000 data
 ```
 
 Porneste un client:
 
 ```powershell
-java -cp out client.ChatClient 127.0.0.1 5000
+& "C:\Users\user\.jdks\openjdk-25.0.2\bin\java.exe" -cp out client.ChatClient 127.0.0.1 5000
 ```
 
 Porneste comanda de client de mai multe ori pentru mai multi utilizatori.
